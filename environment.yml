@@ -1,0 +1,26 @@
+name: cerebellum_ale
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - numpy
+  - scipy
+  - pandas
+  - statsmodels
+  - nilearn
+  - nibabel
+  - seaborn
+  - scikit-learn
+  - notebook
+  - jupyterlab
+  - plotly
+  - datalad==0.18.2
+  - git-annex==10.20230227
+  - openpyxl
+  - pip
+  - pip:
+    - nimare
+    - neuromaps
+    - imageio
+    - hcp_utils==0.1.0
+    - SUITPy
