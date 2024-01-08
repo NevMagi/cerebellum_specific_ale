@@ -1,0 +1,19 @@
+#python 3.11.4
+nimare==0.2.0
+cupy-cuda11x
+git+https://github.com/amnsbr/nimare-gpu.git@8f0864dbe0b8a2e98192186fb3f852530dfdfb10
+SUITPy # version? or get from github?
+numpy
+scipy
+pandas
+statsmodels
+nilearn
+nibabel
+seaborn
+scikit-learn
+jupyterlab
+openpyxl
+neuromaps
+imageio
+hcp_utils==0.1.0
+
