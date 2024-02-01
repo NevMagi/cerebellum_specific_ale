@@ -67,7 +67,7 @@ neuromaps==0.0.4
 nibabel==5.2.0
 nilearn==0.10.2
 NiMARE==0.2.0
-nimare-gpu @ git+https://github.com/amnsbr/nimare-gpu.git@8f0864dbe0b8a2e98192186fb3f852530dfdfb10
+nimare-gpu @ git+https://github.com/amnsbr/nimare-gpu.git@69e8bdf4645b21836d3d03993a7b586d0ad6d9a2
 notebook_shim==0.2.3
 numba==0.58.1
 numpy==1.26.3

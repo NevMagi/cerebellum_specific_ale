@@ -94,7 +94,7 @@ def run_ale(dset, mask, out_dir, n_iters=10000, use_gpu=True, n_cores=4):
     results = meta.fit(dset)
     # run multiple comparison correction
     print("running FWE correction...")
-    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=n_iters, n_cores=n_cores)
+    corr = FWECorrector(method="montecarlo", voxel_thresh=0.001, n_iters=n_iters, n_cores=n_cores, vfwe_only=False)
     cres = corr.transform(results)
     # save results
     print("saving results...")
@@ -107,7 +107,7 @@ def run_ale(dset, mask, out_dir, n_iters=10000, use_gpu=True, n_cores=4):
 
 def run_sale(dset, mask, out_dir, n_iters=10000, use_gpu=True, n_cores=4,
              height_thr=0.001, k=50, 
-             sigma_scale=1.0, debug=False):
+             sigma_scale=1.0, debug=False, use_mmap=False):
     print("running SALE...")
     xyz = get_null_xyz()
     if use_gpu:
@@ -118,8 +118,8 @@ def run_sale(dset, mask, out_dir, n_iters=10000, use_gpu=True, n_cores=4,
             n_cores=1,
             )
         meta.sigma_scale = sigma_scale
-        if debug:
-            meta.keep_perm_nulls = True
+        meta.keep_perm_nulls = debug
+        meta.use_mmap = use_mmap
     else:
         meta = SCALE(
             xyz=xyz,
@@ -222,6 +222,17 @@ if __name__ == '__main__':
     # get default subsample size depending on bd vs subbd
     if (args.subsample_size is None) and (args.n_subsamples > 0):
         args.subsample_size = SUBSAMPLE_SIZE['BD' if args.subbd == 'All' else 'SubBD']
+
+    # disable subsampling if subsample size is 0
+    if args.subsample_size == 0:
+        args.subsample_size = None
+
+    # replace "_" with " - " in subbd
+    # TODO: fix this in the folder names instead
+    args.subbd = args.subbd.replace('_', ' - ')
+    # another quick fix for social cognition
+    if args.subbd == 'SocialCognition':
+        args.subbd = 'Social Cognition'
 
     # check for GPU
     try:
