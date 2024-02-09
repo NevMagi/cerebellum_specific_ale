@@ -12,13 +12,14 @@ def generate_dagman_file(analysis, subsampling):
         prefix += '_subsampling'
     dag_filename = prefix + '.dag'
     f = open('/data/project/cerebellum_ale/scripts/'+dag_filename, 'w')
-    dsets = pd.read_csv('/data/project/cerebellum_ale/output/exp_stats.csv').sort_values('n_experiments', ascending=False)
+    dsets = pd.read_csv('/data/project/cerebellum_ale/output/exp_stats_240209.csv', 
+                        index_col=0).sort_values('n_experiments', ascending=False)
     dsets = dsets[dsets['n_experiments'] >= MIN_EXPERIMENTS]
     n_subsamples = 0
     if subsampling:
-        n_subsamples = 100
+        n_subsamples = 50
         # for now limit them to 'All' subbds
-        dsets = dsets[dsets['SubBD'] == 'All']
+        dsets = dsets[dsets['SubBD'] == dsets['BD']]
         # # in case of subsampling as subsample size is 20
         # # we need to remove datasets with less than 30 experiments
         # dsets = dsets[dsets['n_experiments'] >= 30]
@@ -26,9 +27,6 @@ def generate_dagman_file(analysis, subsampling):
     for _, row in dsets.iterrows():
         bd = row['BD']
         subbd = row['SubBD']
-        subbd = subbd.replace(" - ", "_") # replace illegal " - " with "_", will be replaced back in run.py
-        if subbd == 'Social Cognition': # quick fix for social cognition
-            subbd = 'SocialCognition'
         f.write(f'JOB job_{job_count} run.submit\n')
         f.write(f'VARS job_{job_count} analysis="{analysis}" bd="{bd}" subbd="{subbd}" n_subsamples="{n_subsamples}"\n\n')
         job_count += 1

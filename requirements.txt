@@ -1,7 +1,7 @@
 #python 3.11.4
 nimare==0.2.0
 cupy-cuda11x
-git+https://github.com/amnsbr/nimare-gpu.git@a02436a33f9d9a7227d93d4f949891cbfc5d19cf
+git+https://github.com/amnsbr/nimare-gpu.git@cccff7456dea57fab75f12ab12948e5776c0a985
 SUITPy==1.3.2
 matplotlib<3.7 # this is important for SUITPy flatmap plotting
 numpy

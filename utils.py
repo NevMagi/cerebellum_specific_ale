@@ -44,10 +44,17 @@ def filter_coords_to_mask(dset, mask):
     filtered_dset = filtered_dset.slice(filtered_ids)
     return filtered_dset
 
-def create_Driedrischen2009_mask(space='MNI'):
+def create_Driedrischen2009_mask(space='MNI', dilation=6):
+    out_path = f'{INPUT_DIR}/maps/D2009_{space}'
+    if dilation:
+        out_path += f'_dilated-{dilation}mm'
+    out_path += '.nii.gz'
     dseg = nibabel.load(f'{INPUT_DIR}/cerebellar_atlases/Diedrichsen_2009/atl-Anatom_space-{space}_dseg.nii')
     mask_img = nilearn.image.binarize_img(dseg)
-    mask_img.to_filename(f'{INPUT_DIR}/maps/D2009_{space}.nii.gz')
+    if dilation:
+        dilated_mask_data = ndimage.binary_dilation(mask_img.get_fdata(), iterations=dilation).astype(float)
+        mask_img = nilearn.image.new_img_like(mask_img, dilated_mask_data)
+    mask_img.to_filename(out_path)
 
 def get_null_xyz(mask_path=f'{INPUT_DIR}/maps/D2009_MNI.nii.gz', unique=False):
     xyz_path = mask_path.replace('.nii.gz', '_xyz.npy')
