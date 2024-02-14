@@ -27,6 +27,8 @@ def generate_dagman_file(analysis, subsampling):
     for _, row in dsets.iterrows():
         bd = row['BD']
         subbd = row['SubBD']
+        # replace illegal characters in subbd names
+        subbd = subbd.replace(' ', '_space_').replace('/', '_slash_')
         f.write(f'JOB job_{job_count} run.submit\n')
         f.write(f'VARS job_{job_count} analysis="{analysis}" bd="{bd}" subbd="{subbd}" n_subsamples="{n_subsamples}"\n\n')
         job_count += 1

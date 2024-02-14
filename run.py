@@ -103,12 +103,14 @@ def run(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4,
     """
     Main function that runs ALE/SALE after some preparation
     """
+    subbd = subbd.replace('_space_', ' ').replace('_slash_', '/')
     print(f"running {analysis} for {bd}", end=" ")
     print("on gpu" if use_gpu else f"on cpu ({n_cores} cores)")
     print(f"BD: {bd}")
     print(f"SubBD: {subbd}")
     # prepare dset
-    dset_path = os.path.join(OUTPUT_DIR, 'data', bd, subbd, 'dset.pkl.gz')
+    subbd_clean = subbd.replace(' ', '').replace('/', '') # used for subfolder names
+    dset_path = os.path.join(OUTPUT_DIR, 'data', bd, subbd_clean, 'dset.pkl.gz')
     try:
         dset = nimare.dataset.Dataset.load(dset_path)
     except FileNotFoundError:
@@ -119,7 +121,7 @@ def run(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4,
         print(f"Skipping {bd} {subbd} due to insufficient experiments")
         return
     # create output folder
-    out_dir = os.path.join(OUTPUT_DIR, analysis, bd, subbd)
+    out_dir = os.path.join(OUTPUT_DIR, analysis, bd, subbd_clean)
     if subsample_size:
         out_dir = os.path.join(out_dir, 'subsamples', str(subsample_idx))
     os.makedirs(out_dir, exist_ok=True)

@@ -56,26 +56,21 @@ def create_Driedrischen2009_mask(space='MNI', dilation=6):
         mask_img = nilearn.image.new_img_like(mask_img, dilated_mask_data)
     mask_img.to_filename(out_path)
 
-def get_null_xyz(mask_path=f'{INPUT_DIR}/maps/D2009_MNI.nii.gz', unique=False):
-    xyz_path = mask_path.replace('.nii.gz', '_xyz.npy')
+def get_null_xyz(null_dset_path, mask_path, unique=False):
+    xyz_path = mask_path.replace('.nii.gz', '_xyz')
+    if unique:
+        xyz_path += '-unique'
+    xyz_path += '.npy'
     if os.path.exists(xyz_path):
         # load previously created xyz
-        xyz = np.load(mask_path.replace('.nii.gz', '_xyz.npy'))
+        xyz = np.load(xyz_path)
     else:
         # load and mask source datsets
         mask_img = nibabel.load(mask_path)
-        brain_dsets = {} # whole-brain
-        dsets = {} # filtered to the cerebellum
-        domains = ['Action', 'Cognition', 'Emotion', 'Perception', 'Interoception']
-        for bd in domains:
-            input_path = os.path.join(INPUT_DIR, 'sleuth', 'Behavioural_Domains', 'activations', bd, f'pos_bd-{bd.lower()}.txt')
-            brain_dsets[bd] = nimare.io.convert_sleuth_to_dataset(input_path, target="mni152_2mm")
-            dsets[bd] = filter_coords_to_mask(brain_dsets[bd], mask_img)
+        dset = nimare.dataset.Dataset.load(null_dset_path)
+        dset = filter_coords_to_mask(dset, mask_img)
         # create xyz
-        xyz = []
-        for bd in domains:
-            xyz.append(dsets[bd].coordinates[['x', 'y','z']].values)
-        xyz = np.concatenate(xyz, axis=0)
+        xyz = dset.coordinates[['x', 'y', 'z']].values
         # save it
         np.save(xyz_path, xyz)
     if unique:
@@ -89,7 +84,7 @@ def cluster_extent_correction(res, height_thr=0.001, k=50):
 
     Parameters
     ----------
-    res : :obj:`nimare.results.MetaResult`
+    res : :obj:`nimare.results.MetaResult` or dict of ('logp', 'z') images
         A MetaResult object containing voxel-wise p-values.
     height_thr : :obj:`float`
         Voxel-wise p-value threshold.
@@ -101,11 +96,16 @@ def cluster_extent_correction(res, height_thr=0.001, k=50):
     maps : :obj:`dict` of :obj:`nibabel.Nifti1Image`
         including 'logp' and 'z' maps masked to significant clusters
     """
+    if isinstance(res, dict):
+        logp_3d_img = res["logp"]
+        z_3d_img = res["z"]
+    else:
+        logp_3d_img = res.get_map("logp")
+        z_3d_img = res.get_map("z")
     # get -logp of threshold as voxel-wise p-values
     # are saved as -log10(p)
     logp_height_thr = -np.log10(height_thr)
     # get voxel-wise p-values image data
-    logp_3d_img = res.get_map("logp")
     logp_3d = logp_3d_img.get_fdata()
     # identify clusters
     conn = ndimage.generate_binary_structure(rank=3, connectivity=1)
@@ -120,7 +120,7 @@ def cluster_extent_correction(res, height_thr=0.001, k=50):
     sig_clusters_mask = np.in1d(labeled_arr3d.flatten(), sig_clusters).reshape(logp_3d.shape)
     # mask logp and z maps
     logp_3d *= sig_clusters_mask
-    z_3d = res.get_map("z").get_fdata()
+    z_3d = z_3d_img.get_fdata()
     z_3d *= sig_clusters_mask
     # create nibabel images
     logp_3d_img = nilearn.image.new_img_like(logp_3d_img, logp_3d)
