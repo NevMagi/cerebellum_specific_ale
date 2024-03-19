@@ -8,6 +8,7 @@ from nimare.utils import mm2vox
 import nibabel
 import nilearn.image
 from scipy import ndimage
+import gc
 
 INPUT_DIR = '/data/project/cerebellum_ale/input'
 OUTPUT_DIR = '/data/project/cerebellum_ale/output'
@@ -33,10 +34,11 @@ def filter_coords_to_mask(dset, mask):
     dset_ijk = mm2vox(dset.coordinates[["x", "y", "z"]].values, mask.affine)
     mask_ijk = np.vstack(np.where(mask.get_fdata())).T
     in_mask = np.zeros(dset_ijk.shape[0]).astype(bool)
+    dist = np.zeros(mask_ijk.shape[0], dtype=float) # reusing the same array to reduce memory usage
     for point_idx in tqdm(range(dset_ijk.shape[0])): 
         # using a for loop instead of scipy cdist
         # to minimize memory usage
-        dist = np.linalg.norm(np.array(dset_ijk[point_idx])[np.newaxis, :] - mask_ijk, axis=1)
+        dist[:] = np.linalg.norm(np.array(dset_ijk[point_idx])[np.newaxis, :] - mask_ijk, axis=1)
         in_mask[point_idx] = np.any(dist == 0)
     filtered_dset = copy.deepcopy(dset)
     filtered_dset.coordinates = dset.coordinates.loc[in_mask]

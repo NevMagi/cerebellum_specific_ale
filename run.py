@@ -14,6 +14,7 @@ from nimare.correct import FWECorrector
 import argparse
 from numba import cuda
 import json
+import glob
 
 from utils import filter_coords_to_mask, get_null_xyz, cluster_extent_correction
 
@@ -69,13 +70,24 @@ def run_ale(dset, mask, out_dir, n_iters=10000, use_gpu=True, n_cores=4):
 
 def run_sale(dset, mask, out_dir, n_iters=10000, use_gpu=True, n_cores=4,
              height_thr=0.001, k=50, 
-             sigma_scale=1.0, debug=False, use_mmap=False):
-    print(f"running probabilistic SALE...({len(dset.ids)} experiments)")
+             sigma_scale=1.0, debug=False, use_mmap=False,
+             determinstic=False):
     if use_gpu:
+        if determinstic:
+            approach = 'deterministic'
+            prob_map = None
+            xyz = get_null_xyz(f'/data/project/cerebellum_ale/output/data/BrainMap_dump_Feb2024_mask-{MASK_NAME}.pkl.gz',
+                                os.path.join(INPUT_DIR, 'maps', f'{MASK_NAME}.nii.gz'), 
+                                unique=False)
+        else:
+            approach = 'probabilistic'
+            prob_map = nibabel.load(PROB_MAP_PATH)
+            xyz = None
+        print(f"running {approach} SALE...({len(dset.ids)} experiments)")
         meta = DeviceSCALE(
-            'probabilistic',
-            prob_map=nibabel.load(PROB_MAP_PATH),
-            xyz=None,
+            approach,
+            prob_map=prob_map,
+            xyz=xyz,
             mask=mask, 
             n_iters=n_iters,
             nbits=64,
@@ -89,6 +101,10 @@ def run_sale(dset, mask, out_dir, n_iters=10000, use_gpu=True, n_cores=4,
     results = meta.fit(dset)
     # save uncorrected results
     print("saving results...")
+    # TODO: some parts of results is saved on GPU memory
+    # and this will make loading them on CPU nodes not possible
+    # therefore either remove them or transfer to CPU memory
+    # before saving
     results.save(os.path.join(out_dir, 'uncorr.pkl.gz'))
     results.save_maps(out_dir, 'uncorr')
     results.save_tables(out_dir, 'uncorr')
@@ -97,6 +113,31 @@ def run_sale(dset, mask, out_dir, n_iters=10000, use_gpu=True, n_cores=4,
     # save corrected results
     for map_name, img in cres.items():
         img.to_filename(os.path.join(out_dir, f'corr_cluster_k-{k}_{map_name}.nii.gz'))
+
+def sale_cluster_proper_mask(k=50, mask_name='D2009_MNI'):
+    """
+    Sweeps through all SALE results and applies cluster extent correction
+    after applying the proper cerebellar mask
+    """
+    mask_img = nibabel.load(f'{INPUT_DIR}/maps/{mask_name}.nii.gz')
+    uncorr_paths = glob.glob('/data/project/cerebellum_ale/output/SALE/*/*/uncorr.pkl.gz') \
+        + glob.glob('/data/project/cerebellum_ale/output/SALE/*/*/subsamples*/*/uncorr.pkl.gz')
+    for uncorr_path in sorted(uncorr_paths):
+        clustered_path = uncorr_path.replace('uncorr.pkl.gz', f'corr_cluster_k-{k}_mask-{mask_name}_z.nii.gz')
+        if os.path.exists(clustered_path):
+            continue
+        print(uncorr_path)
+        results = nimare.results.MetaResult.load(uncorr_path)
+        z_orig = results.get_map('z')
+        logp_orig = results.get_map('logp')
+        # mask to the proper mask
+        z_masked = nilearn.image.math_img("m * img", img=z_orig, m=mask_img)
+        logp_masked = nilearn.image.math_img("m * img", img=logp_orig, m=mask_img)
+        # cluster extent correction
+        cres = cluster_extent_correction({'z': z_masked, 'logp': logp_masked}, k=k)
+        # save corrected results
+        for map_name, img in cres.items():
+            img.to_filename(uncorr_path.replace('uncorr.pkl.gz', f'corr_cluster_k-{k}_mask-{mask_name}_{map_name}.nii.gz'))
 
 def run(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4, 
             subsample_size=None, subsample_idx=None, n_subsamples=100):
@@ -122,8 +163,11 @@ def run(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4,
         return
     # create output folder
     out_dir = os.path.join(OUTPUT_DIR, analysis, bd, subbd_clean)
-    if subsample_size:
-        out_dir = os.path.join(out_dir, 'subsamples', str(subsample_idx))
+    if (subsample_size is not None) & (subsample_idx is not None):
+        if subsample_size >= 1:
+            out_dir = os.path.join(out_dir, f'subsamples_n-{int(subsample_size)}', str(subsample_idx))
+        else:
+            out_dir = os.path.join(out_dir, f'subsamples_p-{subsample_size}'.replace('.',''), str(subsample_idx))
     os.makedirs(out_dir, exist_ok=True)
     # load mask
     mask_img = nibabel.load(os.path.join(INPUT_DIR, 'maps', f'{MASK_NAME}.nii.gz'))
@@ -141,6 +185,11 @@ def run(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4,
         else:
             # slice the dataset to subsample and continue
             np.random.seed(1234+subsample_idx) # reproducable but variable seeds per subsample
+            # determine subsample size
+            if subsample_size >= 1:
+                subsample_size = int(subsample_size)
+            else: # if subsample_size is a fraction
+                subsample_size = int(round(subsample_size * len(dset.ids)))
             subsample = np.random.choice(dset.ids, subsample_size, replace=False)
             dset = dset.slice(subsample)
             dset.save(os.path.join(out_dir, 'dset.pkl.gz'))
@@ -150,6 +199,8 @@ def run(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4,
         run_ale(dset, mask, out_dir, n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores)
     elif analysis == 'SALE':
         run_sale(dset, mask, out_dir, n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores)
+    elif analysis == 'dSALE':
+        run_sale(dset, mask, out_dir, n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores, determinstic=True)
     # save config
     with open(os.path.join(out_dir, 'config.json'), 'w') as f:
         json.dump({
@@ -165,14 +216,14 @@ def run(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('analysis', type=str, help='analysis to run', choices=['ALE', 'SALE'])
+    parser.add_argument('analysis', type=str, help='analysis to run', choices=['ALE', 'SALE', 'dSALE', 'proper_mask'])
     parser.add_argument('bd', type=str, help='behavioural domain to run')
     parser.add_argument('subbd', type=str, help='sub-behavioural domain to run')
     parser.add_argument('-n_subsamples', type=int, default=0, help='number of subsamples to run'
                                                                    ' (0 indicates no subsampling)')        
-    parser.add_argument('-subsample_size', type=int, default=None, help='number of experiments to subsample')
+    parser.add_argument('-subsample_size', type=float, default=None, help='number/fraction of experiments to subsample')
     parser.add_argument('-n_iters', type=int, default=10000, help='number of null permutations')
-    # parser.add_argument('-use_gpu', type=int, help='use gpu for ALE', default=True)
+    parser.add_argument('-use_gpu', type=int, help='use gpu', default=True)
     parser.add_argument('-n_cores', type=int, help='number of CPU cores', default=4)
 
     args = parser.parse_args()
@@ -185,16 +236,19 @@ if __name__ == '__main__':
     if args.subsample_size == 0:
         args.subsample_size = None
 
-    # check for GPU
-    try:
-        cuda.select_device(0)
-    except cuda.cudadrv.error.CudaSupportError:
-        print("No GPU found, using CPU")
-        use_gpu = False
-    else:
-        print("GPU found, using GPU")
-        use_gpu = True
+    # # check for GPU
+    # if cuda.is_available():
+    #     print("GPU found, using GPU")
+    #     use_gpu = True
+    # else:
+    #     print("No GPU found, using CPU")
+    #     use_gpu = False
+    # the above does not work on CPU nodes
+    use_gpu = args.use_gpu
 
-    run(analysis=args.analysis, bd=args.bd, subbd=args.subbd, 
-        n_iters=args.n_iters, use_gpu=use_gpu, n_cores=args.n_cores, 
-        subsample_size=args.subsample_size, n_subsamples=args.n_subsamples)
+    if args.analysis == 'proper_mask':
+        sale_cluster_proper_mask()
+    else:
+        run(analysis=args.analysis, bd=args.bd, subbd=args.subbd, 
+            n_iters=args.n_iters, use_gpu=use_gpu, n_cores=args.n_cores, 
+            subsample_size=args.subsample_size, n_subsamples=args.n_subsamples)
