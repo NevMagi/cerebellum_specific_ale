@@ -17,4 +17,3 @@ openpyxl
 neuromaps
 imageio
 hcp_utils==0.1.0
-

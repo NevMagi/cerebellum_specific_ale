@@ -114,7 +114,7 @@ def run_sale(dset, mask, out_dir, n_iters=10000, use_gpu=True, n_cores=4,
     for map_name, img in cres.items():
         img.to_filename(os.path.join(out_dir, f'corr_cluster_k-{k}_{map_name}.nii.gz'))
 
-def sale_cluster_proper_mask(k=50, mask_name='D2009_MNI'):
+def sale_k_cluster(k=50, height=0.001, mask_name='D2009_MNI'):
     """
     Sweeps through all SALE results and applies cluster extent correction
     after applying the proper cerebellar mask
@@ -123,7 +123,7 @@ def sale_cluster_proper_mask(k=50, mask_name='D2009_MNI'):
     uncorr_paths = glob.glob('/data/project/cerebellum_ale/output/SALE/*/*/uncorr.pkl.gz') \
         + glob.glob('/data/project/cerebellum_ale/output/SALE/*/*/subsamples*/*/uncorr.pkl.gz')
     for uncorr_path in sorted(uncorr_paths):
-        clustered_path = uncorr_path.replace('uncorr.pkl.gz', f'corr_cluster_k-{k}_mask-{mask_name}_z.nii.gz')
+        clustered_path = uncorr_path.replace('uncorr.pkl.gz', f'corr_cluster_h-{str(height)[2:]}_k-{k}_mask-{mask_name}_z.nii.gz')
         if os.path.exists(clustered_path):
             continue
         print(uncorr_path)
@@ -134,10 +134,10 @@ def sale_cluster_proper_mask(k=50, mask_name='D2009_MNI'):
         z_masked = nilearn.image.math_img("m * img", img=z_orig, m=mask_img)
         logp_masked = nilearn.image.math_img("m * img", img=logp_orig, m=mask_img)
         # cluster extent correction
-        cres = cluster_extent_correction({'z': z_masked, 'logp': logp_masked}, k=k)
+        cres = cluster_extent_correction({'z': z_masked, 'logp': logp_masked}, k=k, height_thr=height)
         # save corrected results
         for map_name, img in cres.items():
-            img.to_filename(uncorr_path.replace('uncorr.pkl.gz', f'corr_cluster_k-{k}_mask-{mask_name}_{map_name}.nii.gz'))
+            img.to_filename(uncorr_path.replace('uncorr.pkl.gz', f'corr_cluster_h-{str(height)[2:]}_k-{k}_mask-{mask_name}_{map_name}.nii.gz'))
 
 def run(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4, 
             subsample_size=None, subsample_idx=None, n_subsamples=100):
@@ -216,7 +216,7 @@ def run(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('analysis', type=str, help='analysis to run', choices=['ALE', 'SALE', 'dSALE', 'proper_mask'])
+    parser.add_argument('analysis', type=str, help='analysis to run', choices=['ALE', 'SALE', 'dSALE', 'k_cluster'])
     parser.add_argument('bd', type=str, help='behavioural domain to run')
     parser.add_argument('subbd', type=str, help='sub-behavioural domain to run')
     parser.add_argument('-n_subsamples', type=int, default=0, help='number of subsamples to run'
@@ -225,6 +225,10 @@ if __name__ == '__main__':
     parser.add_argument('-n_iters', type=int, default=10000, help='number of null permutations')
     parser.add_argument('-use_gpu', type=int, help='use gpu', default=True)
     parser.add_argument('-n_cores', type=int, help='number of CPU cores', default=4)
+    # k_cluster arguments
+    parser.add_argument('-mask', type=str, default='D2009_MNI', help='mask for k-clustering')
+    parser.add_argument('-height', type=float, default=0.001, help='height threshold for k-clustering')
+    parser.add_argument('-k', type=int, default=50, help='k size for k-clustering')
 
     args = parser.parse_args()
 
@@ -246,8 +250,8 @@ if __name__ == '__main__':
     # the above does not work on CPU nodes
     use_gpu = args.use_gpu
 
-    if args.analysis == 'proper_mask':
-        sale_cluster_proper_mask()
+    if args.analysis == 'k_cluster':
+        sale_k_cluster(k=args.k, height=args.height, mask_name=args.mask)
     else:
         run(analysis=args.analysis, bd=args.bd, subbd=args.subbd, 
             n_iters=args.n_iters, use_gpu=use_gpu, n_cores=args.n_cores, 
