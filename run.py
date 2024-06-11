@@ -71,9 +71,9 @@ def run_ale(dset, mask, out_dir, n_iters=10000, use_gpu=True, n_cores=4):
 def run_sale(dset, mask, out_dir, n_iters=10000, use_gpu=True, n_cores=4,
              height_thr=0.001, k=50, 
              sigma_scale=1.0, debug=False, use_mmap=False,
-             determinstic=False):
+             deterministic=False):
     if use_gpu:
-        if determinstic:
+        if deterministic:
             approach = 'deterministic'
             prob_map = None
             xyz = get_null_xyz(f'/data/project/cerebellum_ale/output/data/BrainMap_dump_Feb2024_mask-{MASK_NAME}.pkl.gz',
@@ -139,6 +139,30 @@ def sale_k_cluster(k=50, height=0.001, mask_name='D2009_MNI'):
         for map_name, img in cres.items():
             img.to_filename(uncorr_path.replace('uncorr.pkl.gz', f'corr_cluster_h-{str(height)[2:]}_k-{k}_mask-{mask_name}_{map_name}.nii.gz'))
 
+def run_macm(zmap_path, n_iters=10000, use_gpu=True, n_cores=4):
+    """
+    Run MACM from cerebellar seed clusters in thresholded zmap 
+    to the whole brain
+    """
+    # define seed clusters
+    zmap = nibabel.load(zmap_path)
+    seed = nilearn.image.binarize_img(zmap)
+    # load masked dump and the whole-brain grey10 mask
+    dump = nimare.dataset.Dataset.load(os.path.join(OUTPUT_DIR, 'data', 'BrainMap_dump_Feb2024_mask-Grey10.pkl.gz'))
+    mask_name = 'Grey10'
+    mask_img = nibabel.load(f'{INPUT_DIR}/maps/{mask_name}.nii.gz')
+    # filter dump to experiments including a focus in the mask
+    seed_dset = dump.slice(dump.get_studies_by_mask(seed))
+    # set output path
+    out_dir = zmap_path.replace('.nii.gz', '_macm')
+    os.makedirs(out_dir, exist_ok=True)
+    # run pSALE
+    run_sale(seed_dset, mask_img, out_dir,
+             n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores,
+             deterministic=False)
+
+
+
 def run(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4, 
             subsample_size=None, subsample_idx=None, n_subsamples=100):
     """
@@ -200,7 +224,7 @@ def run(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4,
     elif analysis == 'SALE':
         run_sale(dset, mask, out_dir, n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores)
     elif analysis == 'dSALE':
-        run_sale(dset, mask, out_dir, n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores, determinstic=True)
+        run_sale(dset, mask, out_dir, n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores, deterministic=True)
     # save config
     with open(os.path.join(out_dir, 'config.json'), 'w') as f:
         json.dump({
@@ -216,7 +240,7 @@ def run(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('analysis', type=str, help='analysis to run', choices=['ALE', 'SALE', 'dSALE', 'k_cluster'])
+    parser.add_argument('analysis', type=str, help='analysis to run', choices=['ALE', 'SALE', 'dSALE', 'k_cluster', 'macm'])
     parser.add_argument('bd', type=str, help='behavioural domain to run')
     parser.add_argument('subbd', type=str, help='sub-behavioural domain to run')
     parser.add_argument('-n_subsamples', type=int, default=0, help='number of subsamples to run'
@@ -229,6 +253,8 @@ if __name__ == '__main__':
     parser.add_argument('-mask', type=str, default='D2009_MNI', help='mask for k-clustering')
     parser.add_argument('-height', type=float, default=0.001, help='height threshold for k-clustering')
     parser.add_argument('-k', type=int, default=50, help='k size for k-clustering')
+    # macm input path
+    parser.add_argument('-macm_in', type=str, default=None, help='full path to thresholded z-map as seed of macm')
 
     args = parser.parse_args()
 
@@ -252,6 +278,8 @@ if __name__ == '__main__':
 
     if args.analysis == 'k_cluster':
         sale_k_cluster(k=args.k, height=args.height, mask_name=args.mask)
+    elif args.analysis == 'macm':
+        run_macm(args.macm_in, n_iters=args.n_iters)
     else:
         run(analysis=args.analysis, bd=args.bd, subbd=args.subbd, 
             n_iters=args.n_iters, use_gpu=use_gpu, n_cores=args.n_cores, 
