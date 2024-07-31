@@ -15,6 +15,7 @@ import argparse
 from numba import cuda
 import json
 import glob
+from brainsmash.mapgen.sampled import Sampled
 
 from utils import filter_coords_to_mask, get_null_xyz, cluster_extent_correction
 
@@ -161,6 +162,41 @@ def run_macm(zmap_path, n_iters=10000, use_gpu=True, n_cores=4):
              n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores,
              deterministic=False)
 
+def run_variogram(bd, subbd, perms=1000):
+    """
+    Creates variogram-based surrogates of the uncorrected Z-maps
+    """
+    subbd = subbd.replace('_space_', '').replace('_slash_', '')
+    # determine paths
+    z_path = os.path.join(OUTPUT_DIR, 'SALE', bd, subbd, 'uncorr_z.nii.gz')
+    surrogates_path = z_path.replace('.nii.gz', f'_2mm_mask-D2009_MNI_surrogates-variogram_n-{perms}.npy')
+    if os.path.exists(surrogates_path):
+        print(f"Surrogates already calculated for {z_path}")
+        return
+    # load sorted distance matrix
+    npydfile = os.path.join(INPUT_DIR, 'maps', 'D2009_MNI_2mm_32bit_distmat_sorted.npy')
+    npyifile = os.path.join(INPUT_DIR, 'maps', 'D2009_MNI_2mm_32bit_distmat_argsort.npy')
+    if not (os.path.exists(npydfile) and os.path.exists(npyifile)):
+        raise FileNotFoundError("Distance matrices not found. Run utils.create_cerebellum_distmat first")
+    nv = 20604 # number of voxels in the 2mm mask
+    fpd = np.lib.format.open_memmap(
+        npydfile, mode='r', dtype=np.float32, shape=(nv, nv)
+    )
+    fpi = np.lib.format.open_memmap(
+        npyifile, mode='r', dtype=np.int32, shape=(nv, nv)
+    )
+    # load z-map and transform it to 2mm mask space
+    z_nii = nibabel.load(z_path)
+    mask_2mm = nibabel.load(os.path.join(INPUT_DIR, 'maps', 'D2009_MNI_2mm.nii.gz'))
+    z_2mm = nilearn.image.resample_to_img(z_nii, mask_2mm)
+    z_2mm.to_filename(z_path.replace('.nii.gz', '_2mm.nii.gz'))
+    # get within-mask values
+    x = z_2mm.get_fdata()[np.isclose(mask_2mm.get_fdata(), 1)]
+    # create surrogates
+    gen = Sampled(x, fpd, fpi, resample=True, seed=0)
+    surrogate_maps = gen(n=perms)
+    # save them
+    np.save(surrogates_path, surrogate_maps)
 
 
 def run(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4, 
@@ -240,7 +276,7 @@ def run(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('analysis', type=str, help='analysis to run', choices=['ALE', 'SALE', 'dSALE', 'k_cluster', 'macm'])
+    parser.add_argument('analysis', type=str, help='analysis to run', choices=['ALE', 'SALE', 'dSALE', 'k_cluster', 'macm', 'variogram'])
     parser.add_argument('bd', type=str, help='behavioural domain to run')
     parser.add_argument('subbd', type=str, help='sub-behavioural domain to run')
     parser.add_argument('-n_subsamples', type=int, default=0, help='number of subsamples to run'
@@ -255,6 +291,7 @@ if __name__ == '__main__':
     parser.add_argument('-k', type=int, default=50, help='k size for k-clustering')
     # macm input path
     parser.add_argument('-macm_in', type=str, default=None, help='full path to thresholded z-map as seed of macm')
+    # TODO: in cleaned code use bd and subbd to get the macm input path
 
     args = parser.parse_args()
 
@@ -280,6 +317,8 @@ if __name__ == '__main__':
         sale_k_cluster(k=args.k, height=args.height, mask_name=args.mask)
     elif args.analysis == 'macm':
         run_macm(args.macm_in, n_iters=args.n_iters)
+    elif args.analysis == 'variogram':
+        run_variogram(args.bd, args.subbd)
     else:
         run(analysis=args.analysis, bd=args.bd, subbd=args.subbd, 
             n_iters=args.n_iters, use_gpu=use_gpu, n_cores=args.n_cores, 

@@ -6,6 +6,7 @@ from nilearn._utils import load_niimg
 import copy
 from nimare.utils import mm2vox
 import nibabel
+import nibabel.processing
 import nilearn.image
 from scipy import ndimage
 import gc
@@ -129,3 +130,38 @@ def cluster_extent_correction(res, height_thr=0.001, k=50):
     z_3d_img = nilearn.image.new_img_like(logp_3d_img, z_3d)
     # return maps
     return {"logp": logp_3d_img, "z": z_3d_img}
+
+def create_cerebellum_distmat():
+    mask_path = '/data/project/cerebellum_ale/input/maps/D2009_MNI.nii.gz'
+    mask_prefix = mask_path.replace('.nii.gz', '').replace('.nii', '')
+    mask = nibabel.load(mask_path)
+    # resample mask to 2mm
+    mask_2mm = nibabel.processing.resample_to_output(mask, 2.0)
+    mask_2mm.to_filename(mask_prefix+'_2mm.nii.gz')
+    # get ijk of within-mask voxels
+    mask_ijk = np.array(np.where(np.isclose(mask_2mm.get_fdata(), 1))).T
+    # create distmat and store it as memmap
+    distmat_path = mask_prefix + '_2mm_distmat.npy'
+    n_points = mask_ijk.shape[0]
+    distmat = np.lib.format.open_memmap(
+        distmat_path, 
+        mode='w+', 
+        dtype=np.float64, 
+        shape=(n_points, n_points)
+    )
+    scipy.spatial.distance.cdist(mask_ijk, mask_ijk, 'euclidean', out=distmat)
+    # convert it to float32
+    distmat32 = distmat.astype(np.float32)
+    distmat32.tofile(mask_prefix + '_2mm_32bit_distmat.npy')
+    # transform to sorted format expected by BrainSmash
+    npydfile = mask_prefix + '_2mm_32bit_distmat_sorted.npy'
+    npyifile = mask_prefix + '_2mm_32bit_distmat_argsort.npy'
+    fpd = np.lib.format.open_memmap(
+        npydfile, mode='w+', dtype=np.float32, shape=(n_points, n_points))
+    fpi = np.lib.format.open_memmap(
+        npyifile, mode='w+', dtype=np.int32, shape=(n_points, n_points))
+    for row in tqdm(range(nv)):
+        d = distmat32[row]
+        sort_idx = np.argsort(d)
+        fpd[row, :] = d[sort_idx]
+        fpi[row, :] = sort_idx        

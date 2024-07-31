@@ -6,9 +6,6 @@ subbd=${3:-"All"}
 n_subsamples=${4:-"0"}
 subsample_size=${5:-"50"}
 
-# subsample_size=${subsample_size//_/.}
-echo "subsample_size = $subsample_size"
-
 export PYTHONUTF8=1
 
 source ${PROJECT_DIR}/venv/bin/activate && \

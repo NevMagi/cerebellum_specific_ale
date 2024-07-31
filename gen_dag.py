@@ -14,12 +14,19 @@ def generate_dagman_file(analysis, subsampling, subsample_subbds=False):
         prefix += '_subsampling_p'
     if subsample_subbds:
         prefix += '_subbds'
+    if analysis == 'variogram':
+        submit_file = '/data/project/cerebellum_ale/scripts/run_cpu.submit'
+        maxjobs = 50
+    else:
+        submit_file = '/data/project/cerebellum_ale/scripts/run.submit'
+        maxjobs = 5
     dag_filename = prefix + '.dag'
     f = open('/data/project/cerebellum_ale/scripts/'+dag_filename, 'w')
     dsets = pd.read_csv('/data/project/cerebellum_ale/output/exp_stats_240209.csv', 
                         index_col=0).sort_values('n_experiments', ascending=False)
     dsets = dsets[dsets['n_experiments'] >= MIN_EXPERIMENTS]
     n_subsamples = 0
+    subsample_size = 0
     if subsampling > 0:
         # set n and size of subsamples
         n_subsamples = 50
@@ -40,11 +47,11 @@ def generate_dagman_file(analysis, subsampling, subsample_subbds=False):
         subbd = row['SubBD']
         # replace illegal characters in subbd names
         subbd = subbd.replace(' ', '_space_').replace('/', '_slash_')
-        f.write(f'JOB job_{job_count} run.submit\n')
+        f.write(f'JOB job_{job_count} {submit_file}\n')
         f.write(f'VARS job_{job_count} analysis="{analysis}" bd="{bd}" subbd="{subbd}" n_subsamples="{n_subsamples}" subsample_size="{subsample_size}"\n\n')
         job_count += 1
     f.write(f'\nCATEGORY ALL_NODES {prefix}')
-    f.write(f'\nMAXJOBS {prefix} 5\n\n') # keep three GPUs free
+    f.write(f'\nMAXJOBS {prefix} {maxjobs}\n\n') # keep three GPUs free
 
 
 if __name__ == '__main__':
