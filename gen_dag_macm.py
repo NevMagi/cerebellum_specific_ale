@@ -5,7 +5,7 @@ import nibabel
 import numpy as np
 
 def generate_dagman_file():
-    dag_filename = 'run_macm.dag'
+    dag_filename = './dag/run_macm.dag'
     f = open('/data/project/cerebellum_ale/scripts/'+dag_filename, 'w')
     zmap_paths = glob.glob('/data/project/cerebellum_ale/output/SALE/*/*/corr_cluster_h-001_k-50_mask-D2009_MNI_z.nii.gz')
     job_count = 0

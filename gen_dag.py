@@ -7,11 +7,11 @@ import pandas as pd
 MIN_EXPERIMENTS = 15
 
 def generate_dagman_file(analysis, subsampling, subsample_subbds=False):
-    prefix = f'run_{analysis}'
-    if subsampling == 1:
-        prefix += '_subsampling'
-    elif subsampling == 2:
-        prefix += '_subsampling_p'
+    prefix = f'./dag/run_{analysis}'
+    if subsampling >= 1:
+        prefix += f'_subsampling_N-{subsampling}'
+    elif (subsampling < 1) & (subsampling > 0):
+        prefix += f'_subsampling_p-{subsampling}'
     if subsample_subbds:
         prefix += '_subbds'
     if analysis == 'variogram':
@@ -30,10 +30,10 @@ def generate_dagman_file(analysis, subsampling, subsample_subbds=False):
     if subsampling > 0:
         # set n and size of subsamples
         n_subsamples = 50
-        if subsampling == 1:
-            subsample_size = 50
-        elif subsampling == 2:
-            subsample_size = 0.2
+        if subsampling >= 1:
+            subsample_size = int(subsampling)
+        elif subsampling < 1:
+            subsample_size = subsampling
         if subsample_subbds:
             dsets = dsets[
                 (dsets['n_experiments'] >= 100) & \
@@ -56,7 +56,7 @@ def generate_dagman_file(analysis, subsampling, subsample_subbds=False):
 
 if __name__ == '__main__':
     analysis = sys.argv[1]
-    subsampling = int(sys.argv[2])
+    subsampling = float(sys.argv[2])
     try:
         subsample_subbds = bool(int(sys.argv[3]))
     except:
