@@ -1,0 +1,6 @@
+conda install cupy numba "numpy<2" "scipy<1.13.0" pandas statsmodels "nilearn==0.10.1" nibabel seaborn scikit-learn jupyterlab openpyxl imageio "matplotlib<3.7" vtk
+python -m pip install nimare==0.2.0 "git+https://github.com/amnsbr/nimare-gpu.git@a67c9449752b059ea71bd7cc61709f1c6aee507f" SUITPy==1.3.2 neuromaps hcp_utils==0.1.0 pyvirtualdisplay==3.0 brainspace==0.1.4 --no-deps # no deps since it tries to reinstall e.g. scipy
+
+## then install dependencies that are missing and required to run GPU scaling
+# try importing dependencies of experiments/240919_gpu_speedup2.ipynb until there is no error
+python -m pip install fuzzywuzzy cognitiveatlas plotly "pymare~=0.0.4rc2" "sparse<=0.13.0" tqdm

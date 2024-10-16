@@ -1,0 +1,16 @@
+# Environment
+universe       = vanilla
+getenv         = True
+request_gpus   = 1
+request_memory = 16GB
+
+# Execution
+initial_dir    = /data/project/cerebellum_ale
+executable     = /bin/bash
+
+# Job
+arguments = $(initial_dir)/scripts/run.sh $(analysis) $(bd) $(subbd) $(n_subsamples) $(subsample_size)
+log       = $(initial_dir)/logs/run_$(analysis)_$(bd)_$(subbd)_subsamples-$(n_subsamples)_size-$(subsample_size).$(Cluster).$(Process).log
+output    = $(initial_dir)/logs/run_$(analysis)_$(bd)_$(subbd)_subsamples-$(n_subsamples)_size-$(subsample_size).$(Cluster).$(Process).out
+error     = $(initial_dir)/logs/run_$(analysis)_$(bd)_$(subbd)_subsamples-$(n_subsamples)_size-$(subsample_size).$(Cluster).$(Process).err
+Queue

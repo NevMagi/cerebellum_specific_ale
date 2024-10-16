@@ -1,0 +1,16 @@
+# Environment
+universe       = vanilla
+getenv         = True
+request_gpus   = 1
+request_memory = 16GB
+
+# Execution
+initial_dir    = /data/project/cerebellum_ale
+executable     = /bin/bash
+
+# Job
+arguments = $(initial_dir)/scripts/run_macm.sh $(zmap_path)
+log       = $(initial_dir)/logs/run_macm.$(Cluster).$(Process).log
+output    = $(initial_dir)/logs/run_macm.$(Cluster).$(Process).out
+error     = $(initial_dir)/logs/run_macm.$(Cluster).$(Process).err
+Queue
