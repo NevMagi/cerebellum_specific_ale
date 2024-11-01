@@ -1,0 +1,6 @@
+[submodule "tools/SUITPy"]
+	path = tools/SUITPy
+	url = https://github.com/DiedrichsenLab/SUITPy.git
+[submodule "input/cerebellar_atlases"]
+	path = input/cerebellar_atlases
+	url = https://github.com/DiedrichsenLab/cerebellar_atlases.git

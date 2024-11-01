@@ -1,0 +1,13 @@
+venv/
+__pycache__
+dag/
+.ipynb_checkpoints/
+.ruff_cache/
+*.pkl.gz
+*variogram*.npy
+*distmat*.npy
+uncorr_z_2mm.nii.gz
+subsamples_*/
+*.json
+figures-old/
+scripts/Figures/backup/

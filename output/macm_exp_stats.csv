@@ -1,0 +1,13 @@
+subbd,n_exp,n_foci,n_subs
+Action,197,3954,2656
+Action.Execution,251,5195,3451
+Action.Execution.Speech,80,1638,1096
+Action.Observation,6,91,92
+Cognition.Language,9,200,124
+Cognition.Memory.Working,21,345,353
+Cognition.SocialCognition,13,323,208
+Emotion.Negative.Sadness,2,18,22
+Perception.Somesthesis,5,96,78
+Perception.Vision,34,553,467
+Perception.Vision.Motion,10,187,153
+Perception.Vision.Shape,14,167,180
