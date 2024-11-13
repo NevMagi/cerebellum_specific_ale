@@ -6,7 +6,7 @@ request_memory = 16GB
 
 # Execution
 initial_dir    = $ENV(PROJECT_DIR)
-executable     = $(initial_dir)/venv/bin/python
+executable     = $(initial_dir)/../venv/bin/python
 
 # Job
 arguments = $(initial_dir)/scripts/run_scaling.py $(analysis) $(n_iters) $(n_exp) 1
