@@ -1,8 +1,6 @@
 # Cerebellum-Specific ALE (C-SALE)
 
-This repository contains code and data associated with the paper 'Bias-accounting meta-analyses overcome cerebellar neglect to refine the cerebellar behavioral topography' by Magielse, Manoli, Eickhoff, Fox, Saberi*, and Valk*.
-
-Find the preprint here: [Bias-accounting meta-analyses overcome cerebellar neglect to refine the cerebellar behavioral topography](https://doi.org/10.1101/2024.10.31.621398).
+This repository contains code and data associated with the paper ['Bias-accounting meta-analyses overcome cerebellar neglect to refine the cerebellar behavioral topography'](https://doi.org/10.1101/2024.10.31.621398)' by Magielse, Manoli, Eickhoff, Fox, Saberi*, and Valk*.
 
 ## Graphical Abstract
 ![alt text](./output/graphical_abstract.png)
