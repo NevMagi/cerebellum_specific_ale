@@ -1,10 +1,13 @@
 import os
+import tempfile
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import nimare
 import copy
 from nimare.utils import mm2vox
+from nimare.extract import fetch_neurosynth
+from nimare.io import convert_neurosynth_to_dataset
 import nibabel
 import nibabel.processing
 import nilearn.image
@@ -81,6 +84,7 @@ domains_list = ['Action', 'Cognition', 'Emotion', 'Interoception', 'Perception']
 subdomains_with_domains = sorted(list(set(bd_labels.index) - set(domains_list)))
 subdomains_list = ['.'.join(s.split('.')[1:]) for s in subdomains_with_domains]
 
+neurosynth_terms = ['action', 'adaptation', 'anticipation', 'anxiety', 'arousal', 'attention', 'autobiographical memory', 'balance', 'belief', 'cognitive control', 'communication', 'competition', 'concept', 'consciousness', 'consolidation', 'context', 'coordination', 'decision', 'decision making', 'detection', 'eating', 'emotion', 'emotion regulation', 'empathy', 'encoding', 'episodic memory', 'expectancy', 'extinction', 'face recognition', 'facial expression', 'fear', 'fixation', 'focus', 'gaze', 'goal', 'imagery', 'induction', 'inference', 'inhibition', 'integration', 'intelligence', 'intention', 'interference', 'knowledge', 'language', 'language comprehension', 'learning', 'listening', 'localization', 'loss', 'maintenance', 'manipulation', 'meaning', 'memory', 'memory retrieval', 'mental imagery', 'morphology', 'motor control', 'movement', 'naming', 'navigation', 'object recognition', 'pain', 'perception', 'planning', 'priming', 'reading', 'reasoning', 'recall', 'recognition', 'reinforcement learning', 'response inhibition', 'response selection', 'retention', 'retrieval', 'reward anticipation', 'rhythm', 'risk', 'rule', 'salience', 'search', 'selective attention', 'semantic memory', 'sentence comprehension', 'skill', 'sleep', 'social cognition', 'spatial attention', 'speech perception', 'speech production', 'strategy', 'strength', 'sustained attention', 'task difficulty', 'thought', 'valence', 'verbal fluency', 'visual attention', 'visual perception', 'word recognition', 'working memory']
 ##############################################
 # Helper functions for running meta-analyses #
 ##############################################
@@ -376,6 +380,52 @@ def cluster_extent_correction(res, height_thr=0.001, k=50):
     z_3d_img = nilearn.image.new_img_like(logp_3d_img, z_3d)
     # return maps
     return {"logp": logp_3d_img, "z": z_3d_img}
+
+def prep_neurosynth():
+    """
+    Downloads neurosynth data, converts it to a NiMARE dataset,
+    calculates its kernel sum, masks it to the cerebellum,
+    and saves all to <OUTPUT_DIR>/data
+    """
+    if os.path.exists(
+        os.path.join(OUTPUT_DIR, 'data', 'Neurosynth_dump_mask-D2009_MNI_dilated-6mm.pkl.gz')
+    ):
+        print("Neurosynth data exists")
+        return
+    # fetch raw neurosynth data
+    tmp_out_dir = tempfile.mkdtemp()
+    neurosynth_db = fetch_neurosynth(
+        data_dir=tmp_out_dir,
+        version="7",
+        overwrite=False,
+        source="abstract",
+        vocab="terms",
+    )[0]
+    # convert it to a NiMARE dataset
+    neurosynth_dset = convert_neurosynth_to_dataset(
+        coordinates_file=neurosynth_db["coordinates"],
+        metadata_file=neurosynth_db["metadata"],
+        annotations_files=neurosynth_db["features"],
+    )
+    # Neurosynth dataset does not include the sample size, which is needed throughout our 
+    # meta-analysis pipeline. Therefore we'll assume that all experiments have a sample 
+    # size of 20 which is a reasonable estimate according to the medians reported 
+    # in Poldrack et al. 2017 (https://doi.org/10.1038/nrn.2016.167)
+    neurosynth_dset.metadata['sample_sizes'] = 20
+    neurosynth_dset.metadata['sample_sizes'] = neurosynth_dset.metadata['sample_sizes'].apply(lambda c: [c])
+    # save the unfiltered version of neurosynth dataset
+    neurosynth_dset.save(os.path.join(OUTPUT_DIR, 'data', 'Neurosynth_dump.pkl.gz'))
+    # calculate kernels sum
+    kernels_sum_path = get_kernels_sum(os.path.join(OUTPUT_DIR, 'data', 'Neurosynth_dump.pkl.gz'))
+    # filter to the cerebellar mask and save the filtered dataset
+    mask = nibabel.load(os.path.join(INPUT_DIR, 'maps', 'D2009_MNI_dilated-6mm.nii.gz'))
+    neurosynth_dset_masked = filter_coords_to_mask(neurosynth_dset, mask)
+    neurosynth_dset_masked.save(
+        os.path.join(OUTPUT_DIR, 'data', 'Neurosynth_dump_mask-D2009_MNI_dilated-6mm.pkl.gz')
+    )
+    
+
+    
 
 ##########################################
 # Helper functions for statistical tests #
@@ -839,7 +889,7 @@ def plot_surface(surface_data, mesh, itype=None, filename=None,
 ######################
 # Data I/O functions #
 ######################
-def load_results(analysis, domain, subdomain=None, flatmap=True, subsamples=None):
+def load_results(analysis, domain, subdomain=None, flatmap=True, subsamples=None, source='BrainMap'):
     """
     Loads uncorrected and corrected results of the analysis.
 
@@ -848,14 +898,17 @@ def load_results(analysis, domain, subdomain=None, flatmap=True, subsamples=None
     analysis: {'ALE', 'SALE'}
         Type of analysis.
     domain: str
-        The main domain to load results for.
+        The main domain (BrainMap) or term (Neurosynth) to load results for.
     subdomain: str, optional
         Specific subdomain to load. If not provided, the function will treat the domain as the main result.
+        Not applicable to Neurosynth.
     flatmap: bool, optional
         Whether to convert the results to flatmap format (default is True).
     subsamples: str, optional
         The subsamples to load (e.g., 'n-25', 'p-04'). If specified, the function will load the 
         subsamples data instead of the main results.
+        Not applicable to Neurosynth.
+    source: {'BrainMap', 'Neurosynth'}
 
     Returns
     -------
@@ -865,14 +918,18 @@ def load_results(analysis, domain, subdomain=None, flatmap=True, subsamples=None
     """
     if subsamples:
         assert (analysis == 'SALE'), "Subsamples are only available for SALE analysis."
+        assert (source == 'BrainMap'), "Subsamples are only available for BrainMap data."
     # Initialize the results dictionary
     results_dict = {}
     # Set the domain path based on whether a subdomain is provided
-    if subdomain:
+    if (source == 'BrainMap') and (subdomain is not None):
         domain_full = f"{domain}.{subdomain}"
     else:
         domain_full = domain
-    domain_path = os.path.join(OUTPUT_DIR, analysis, domain, domain_full)
+    if source == 'BrainMap':
+        domain_path = os.path.join(OUTPUT_DIR, analysis, domain, domain_full)
+    else:
+        domain_path = os.path.join(OUTPUT_DIR, analysis, 'Neurosynth', domain_full.replace(' ', ''))
     # Load mask image for applying cerebellum mask
     mask_img = nibabel.load(create_Diedrichsen2009_mask('MNI', dilation=0))
     # Check if we're loading subsamples

@@ -84,6 +84,49 @@ def prepare_data(bd_prefix, pure=False, merge_exps=True, out_path=None):
         dset.save(out_path)
     return dset
 
+def prepare_data_neurosynth(term, frequency_threshold=0, out_path=None):
+    """
+    Creates the NiMARE dataset correponding to `bd_prefix` from the
+    BrainMap dump. Note that this function assumes that the BrainMap
+    data exists in the output directory as 'BrainMap_dump_Feb2024.pkl.gz'
+
+    Parameters
+    ----------
+    term : str
+        must be from https://github.com/neurosynth/neurosynth-data/blob/master/data-neurosynth_version-7_vocab-terms_vocabulary.txt
+    frequency_threshold: float
+        threshold of term frequency in the abstract for an experiment to be selected
+    out_path : str
+        Path to save the dataset to
+    
+    Returns
+    -------
+    dset : nimare.dataset.Dataset
+    """
+    print("Preparing data...")
+    dump_path = os.path.join(OUTPUT_DIR, 'data', f'Neurosynth_dump_mask-{MASK_NAME}.pkl.gz')
+    # first time this function is called, load the whole-brain
+    # dump and filter it to the cerebellar mask
+    if not os.path.exists(dump_path):
+        print("Masking the whole-brain dump to the cerebellar mask...")
+        dump_brain = nimare.dataset.Dataset.load(os.path.join(OUTPUT_DIR, 'data', 'Neurosynth_dump.pkl.gz'))
+        mask_img = nibabel.load(os.path.join(INPUT_DIR, 'maps', f'{MASK_NAME}.nii.gz'))
+        dump = utils.filter_coords_to_mask(dump_brain, mask_img)
+        dump.save(dump_path)
+    else:
+        # load the masked dump if it already exists
+        dump = nimare.dataset.Dataset.load(dump_path)
+    # clean up terms table
+    annots_clean = dump.annotations.copy()
+    annots_clean.columns = list(annots_clean.columns[:3]) + list(annots_clean.columns[3:].str.replace('terms_abstract_tfidf__', ''))
+    # select experiments with selected terms
+    selected_ids = annots_clean.loc[annots_clean[term]>frequency_threshold, 'id'].values
+    dset = dump.slice(selected_ids)
+    # save the dataset if indicated
+    if out_path is not None:
+        dset.save(out_path)
+    return dset
+
 def run_ale(dset, mask, out_dir=None, n_iters=10000, use_gpu=True, n_cores=4):
     """
     Runs classic ALE on the given dataset and saves its results
@@ -98,7 +141,7 @@ def run_ale(dset, mask, out_dir=None, n_iters=10000, use_gpu=True, n_cores=4):
         Number of iterations to use in cFWE correction
     use_gpu : bool
     n_cores : int
-        Number of CPU cores to use. Only used if `use_gpu` is False    
+        Number of CPU cores to use. Only used if `use_gpu` is False 
     """
     print(f"Running ALE on ({len(dset.ids)} experiments)...")
     # create ALE or DeviceALE object depending on the hardware
@@ -127,7 +170,8 @@ def run_ale(dset, mask, out_dir=None, n_iters=10000, use_gpu=True, n_cores=4):
 
 def run_sale(dset, mask, out_dir=None, n_iters=10000, use_gpu=True, 
              n_cores=4, height_thr=0.001, k=50, sigma_scale=1.0, 
-             debug=False, use_mmap=False, approach='probabilistic'):
+             debug=False, use_mmap=False, approach='probabilistic',
+             source='BrainMap'):
     """
     Runs specific ALE (SALE) on the given dataset and saves its results.
     Note that probabilistic SALE is not implemented for CPU.
@@ -160,24 +204,30 @@ def run_sale(dset, mask, out_dir=None, n_iters=10000, use_gpu=True,
         Approach to use for sampling null coordinates
         - probabilistic: uses a null probability map
         - deterministic: uses a null set of coordinates
+    source : {'BrainMap', 'Neurosynth'}
     """
     print(f"Running {approach} SALE on ({len(dset.ids)} experiments)...")
+    if source == 'BrainMap':
+        dump_prefix = 'BrainMap_dump_Feb2024'
+    elif source == 'Neurosynth':
+        dump_prefix = 'Neurosynth_dump'
+    if approach == 'deterministic':
+        # for dSALE the null set of coordinates are loaded
+        prob_map = None
+        xyz = utils.get_null_xyz(
+            os.path.join(OUTPUT_DIR, 'data', f'{dump_prefix}_mask-{MASK_NAME}.pkl.gz'),
+            os.path.join(INPUT_DIR, 'maps', f'{MASK_NAME}.nii.gz'), 
+            unique=False
+        )
+    else:
+        # for pSALE the null probability map of effects
+        # (kernel sum) is loaded
+        # it will be masked and normalized to sum of 1
+        # in the DeviceSCALE class
+        prob_map_path = utils.get_kernels_sum(os.path.join(OUTPUT_DIR, 'data', f'{dump_prefix}.pkl.gz'))
+        prob_map = nibabel.load(PROB_MAP_PATH)
+        xyz = None
     if use_gpu:
-        if approach == 'deterministic':
-            # for dSALE the null set of coordinates are loaded
-            prob_map = None
-            xyz = utils.get_null_xyz(
-                os.path.join(OUTPUT_DIR, 'data', f'BrainMap_dump_Feb2024_mask-{MASK_NAME}.pkl.gz'),
-                os.path.join(INPUT_DIR, 'maps', f'{MASK_NAME}.nii.gz'), 
-                unique=False
-            )
-        else:
-            # for pSALE the null probability map of effects
-            # (kernel sum) is loaded
-            # it will be masked and normalized to sum of 1
-            # in the DeviceSCALE class
-            prob_map = nibabel.load(PROB_MAP_PATH)
-            xyz = None
         # initialize DeviceSCALE object
         meta = DeviceSCALE(
             approach,
@@ -219,8 +269,10 @@ def run_sale(dset, mask, out_dir=None, n_iters=10000, use_gpu=True,
         for map_name, img in cres.items():
             img.to_filename(os.path.join(out_dir, f'corr_cluster_h-{str(height_thr)[2:]}_k-{k}_mask-{MASK_NAME_PROPER}_{map_name}.nii.gz'))
 
-def run_meta(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4, 
-            subsample_size=0, subsample_idx=None, n_subsamples=0):
+def run_meta(analysis, source, subbd='', 
+             n_iters=10000, use_gpu=True, n_cores=4, 
+             subsample_size=0, subsample_idx=None, 
+             n_subsamples=0):
     """
     Main function that runs main and subsampled ALE/SALE after
     preparing their datasets and saves the results to the output
@@ -232,11 +284,10 @@ def run_meta(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4,
         - ALE: classic activation likelihood estimation
         - SALE: (probabilistic) specific activation likelihood estimation
         - dSALE: deterministic specific activation likelihood estimation
-    bd : {'Action', 'Cognition', 'Emotion', 'Interoception', 'Perception'}
-        Behavioural domain
+    source : {'BrainMap', 'Neurosynth"}
     subbd : str
-        Behavioral subdomain, e.g. 'Action.Execution'
-        set it to bd to run the meta-analysis on all subdomains
+        - Behavioral (sub)domain, e.g. 'Action' or 'Action.Execution' for BrainMap
+        - Abstract term for Neurosynth
     n_iters : int
         Number of null permutations
     use_gpu : bool
@@ -251,31 +302,46 @@ def run_meta(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4,
     n_subsamples : int
         Number of subsamples to run. Only used if `subsample_size` is not None
     """
+    if source == 'Neurosynth':
+        # this is only going to be run once
+        utils.prep_neurosynth()
     # replace space and slash with their respective strings
     # (a workaround for correctly passing subbds through condor and argparse
     # when they contain spaces and slashes)
     subbd = subbd.replace('_space_', ' ').replace('_slash_', '/')
-    print(f"Running {analysis} for {bd}", end=" ")
+    if source == 'BrainMap':
+        bd = subbd.split('.')[0]
+    else:
+        bd = ''
+    print(f"Running {analysis} ({source})", end=" ")
     print("on gpu" if use_gpu else f"on cpu ({n_cores} cores)")
-    print(f"BD: {bd}")
-    print(f"SubBD: {subbd}")
     # prepare dset (load or create it)
+    print(f"SubBD/Term: {subbd}")
     subbd_clean = subbd.replace(' ', '').replace('/', '') # used for subfolder names
-    dset_path = os.path.join(OUTPUT_DIR, 'data', bd, subbd_clean, 'dset.pkl.gz')
+    if source == 'Neurosynth':
+        dset_path = os.path.join(OUTPUT_DIR, 'data', source, subbd_clean, 'dset.pkl.gz')
+    else:
+        dset_path = os.path.join(OUTPUT_DIR, 'data', bd, subbd_clean, 'dset.pkl.gz')
     if os.path.exists(dset_path):
         dset = nimare.dataset.Dataset.load(dset_path)
     else:
         os.makedirs(os.path.dirname(dset_path), exist_ok=True)
-        dset = prepare_data(subbd, out_path=dset_path)
+        if source == 'BrainMap':
+            dset = prepare_data(subbd, out_path=dset_path)
+        elif source == 'Neurosynth':
+            dset = prepare_data_neurosynth(subbd, out_path=dset_path)
     # skip meta-analysis if there are not enough experiments
     if len(dset.ids) < MIN_EXPERIMENTS:
-        print(f"Skipping {bd} {subbd} due to insufficient number of experiments")
+        print(f"Skipping {bd} {subbd} {term} due to insufficient number of experiments")
         return
     if (subsample_size > 0) & (len(dset.ids) < MIN_EXPERIMENTS_SUBSAMPLING):
-        print(f"Skipping {bd} {subbd} subsampling due to insufficient number of experiments")
+        print(f"Skipping {bd} {subbd} {term} subsampling due to insufficient number of experiments")
         return
     # create output folder
-    out_dir = os.path.join(OUTPUT_DIR, analysis, bd, subbd_clean)
+    if source == 'Neurosynth':
+        out_dir = os.path.join(OUTPUT_DIR, analysis, source, subbd_clean)
+    else:
+        out_dir = os.path.join(OUTPUT_DIR, analysis, bd, subbd_clean)
     if (subsample_size is not None) & (subsample_idx is not None):
         if subsample_size >= 1:
             # susample size is an integer showing N experiments
@@ -322,9 +388,9 @@ def run_meta(analysis, bd, subbd, n_iters=10000, use_gpu=True, n_cores=4,
     if analysis == 'ALE':
         run_ale(dset, mask, out_dir, n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores)
     elif analysis == 'SALE':
-        run_sale(dset, mask, out_dir, n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores)
+        run_sale(dset, mask, out_dir, n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores, source=source)
     elif analysis == 'dSALE':
-        run_sale(dset, mask, out_dir, n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores, approach='deterministic')
+        run_sale(dset, mask, out_dir, n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores, source=source, approach='deterministic')
     # save config after running the analysis
     with open(os.path.join(out_dir, 'config.json'), 'w') as f:
         json.dump({
@@ -348,8 +414,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('analysis', type=str, help='analysis to run', 
         choices=['ALE', 'SALE', 'dSALE', 'macm', 'variogram'])
-    parser.add_argument('bd', type=str, help='behavioural domain to run')
-    parser.add_argument('subbd', type=str, help='sub-behavioural domain to run')
+    parser.add_argument('source', type=str, help='data source',
+        choices=['BrainMap', 'Neurosynth']
+    )
+    parser.add_argument('subbd', type=str, 
+                        help='BrainMap behavioural (sub)domain or Neurosynth term to run')
     parser.add_argument('-n_subsamples', type=int, default=0, 
                         help='number of subsamples to run (0 indicates no subsampling)')        
     parser.add_argument('-subsample_size', type=float, default=0, 
@@ -361,6 +430,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    run_meta(analysis=args.analysis, bd=args.bd, subbd=args.subbd, 
+    run_meta(analysis=args.analysis, source=args.source, subbd=args.subbd, 
         n_iters=args.n_iters, use_gpu=args.use_gpu, n_cores=args.n_cores, 
         subsample_size=args.subsample_size, n_subsamples=args.n_subsamples)

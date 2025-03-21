@@ -9,8 +9,8 @@ initial_dir    = $ENV(PROJECT_DIR)
 executable     = $(initial_dir)/venv/bin/python
 
 # Job
-arguments = $(initial_dir)/scripts/run_meta.py $(analysis) $(bd) $(subbd) -n_subsamples=$(n_subsamples) -subsample_size=$(subsample_size)
-log       = $(initial_dir)/logs/run_$(analysis)_$(bd)_$(subbd)_subsamples-$(n_subsamples)_size-$(subsample_size).$(Cluster).$(Process).log
-output    = $(initial_dir)/logs/run_$(analysis)_$(bd)_$(subbd)_subsamples-$(n_subsamples)_size-$(subsample_size).$(Cluster).$(Process).out
-error     = $(initial_dir)/logs/run_$(analysis)_$(bd)_$(subbd)_subsamples-$(n_subsamples)_size-$(subsample_size).$(Cluster).$(Process).err
+arguments = $(initial_dir)/scripts/run_meta.py $(analysis) $(source) $(subbd) -n_subsamples=$(n_subsamples) -subsample_size=$(subsample_size)
+log       = $(initial_dir)/logs/run_$(analysis)_$(source)_$(subbd)_subsamples-$(n_subsamples)_size-$(subsample_size).$(Cluster).$(Process).log
+output    = $(initial_dir)/logs/run_$(analysis)_$(source)_$(subbd)_subsamples-$(n_subsamples)_size-$(subsample_size).$(Cluster).$(Process).out
+error     = $(initial_dir)/logs/run_$(analysis)_$(source)_$(subbd)_subsamples-$(n_subsamples)_size-$(subsample_size).$(Cluster).$(Process).err
 Queue

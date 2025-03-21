@@ -1,10 +1,12 @@
 logs/
 venv/
+venv
 __pycache__
 dag/
 .ipynb_checkpoints/
 .ruff_cache/
 *.pkl.gz
+!output/data/Neurosynth*.pkl.gz
 *variogram*.npy
 *distmat*.npy
 uncorr_z_2mm.nii.gz
@@ -12,3 +14,6 @@ subsamples_*/
 *.json
 figures-old/
 scripts/Figures/backup/
+output/Figures/*
+output/ALE/*
+output/SALE/*
