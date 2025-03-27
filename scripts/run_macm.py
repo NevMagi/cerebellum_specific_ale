@@ -75,7 +75,7 @@ def run_macm(zmap_path, n_iters=10000, use_gpu=True, n_cores=4, merge_exps=True)
     # run pSALE
     run_sale(seed_dset, mask_img, out_dir,
              n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores,
-             approach='probabilistic')
+             approach='probabilistic', cres_mask=None, cres_mask_name=None)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

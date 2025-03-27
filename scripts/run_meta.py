@@ -22,8 +22,6 @@ MIN_EXPERIMENTS_SUBSAMPLING = 60
 MASK_NAME = 'D2009_MNI_dilated-6mm'
 # define proper (non-dilated) cerebellar mask (created via utils.create_Driedrischen2009_mask('MNI', dilation=0))
 MASK_NAME_PROPER = 'D2009_MNI'
-# define kernel sum map used for sampling null coordinates in pSALE
-PROB_MAP_PATH = utils.get_kernels_sum(os.path.join(OUTPUT_DIR, 'data', 'BrainMap_dump_Feb2024.pkl.gz'))
 
 def prepare_data(bd_prefix, pure=False, merge_exps=True, out_path=None):
     """
@@ -225,7 +223,7 @@ def run_sale(dset, mask, out_dir=None, n_iters=10000, use_gpu=True,
         # it will be masked and normalized to sum of 1
         # in the DeviceSCALE class
         prob_map_path = utils.get_kernels_sum(os.path.join(OUTPUT_DIR, 'data', f'{dump_prefix}.pkl.gz'))
-        prob_map = nibabel.load(PROB_MAP_PATH)
+        prob_map = nibabel.load(prob_map_path)
         xyz = None
     if use_gpu:
         # initialize DeviceSCALE object
@@ -332,10 +330,10 @@ def run_meta(analysis, source, subbd='',
             dset = prepare_data_neurosynth(subbd, out_path=dset_path)
     # skip meta-analysis if there are not enough experiments
     if len(dset.ids) < MIN_EXPERIMENTS:
-        print(f"Skipping {bd} {subbd} {term} due to insufficient number of experiments")
+        print(f"Skipping {bd} {subbd} due to insufficient number of experiments")
         return
     if (subsample_size > 0) & (len(dset.ids) < MIN_EXPERIMENTS_SUBSAMPLING):
-        print(f"Skipping {bd} {subbd} {term} subsampling due to insufficient number of experiments")
+        print(f"Skipping {bd} {subbd} subsampling due to insufficient number of experiments")
         return
     # create output folder
     if source == 'Neurosynth':
