@@ -3,8 +3,8 @@
 This repository contains code and data associated with the paper ['A bias-accounting meta-analytic approach refines and expands
 the cerebellar behavioral topography'](https://doi.org/10.1101/2024.10.31.621398) by Magielse, Manoli, Eickhoff, Fox, Saberi*, and Valk*.
 
-## Method figure
-![alt text](./output/Figure8.png)
+## Graphical Abstract
+![alt text](./output/graphical_abstract.png)
 
 ## Short Description
 In this study we adapted the [Activation Likelihood Estimation method for coordinate-based meta-analysis](https://doi.org/10.1016/j.neuroimage.2011.09.017) to account for unequal distributions of reported effects. We describe how in the entire brain, but especially the cerebellum, foci distributions are highly skewed. The overrepresentation of superior cerebellar foci - likely related to historical neglect of the cerebellum in neuroimaging studies - results in inaccurate locations of cerebellar convergence across task domains. Our new method, Cerebellum-Specific ALE (C-SALE) much improves specificity of convergence in the cerebellum in both BrainMap and NeuroSynth. We extensively characterize these maps, through repeated subsampling and correspondence to existing cerebellar parcellations. We then use this new debiased framework to perform whole-brain meta-analytic connectivty modelling (MACM), showing brain-wide cerebellar coactivation networks and illustrating how the new method can be translated to any volumetric brain region-of-interest. Besides providing our full code (except the raw BrainMap data, see **Additional Requirements**) we provide a graphical-processing unit implementation of ALE that can greatly speed-up analyses at: [amnsbr/nimare-gpu](https://github.com/amnsbr/nimare-gpu).
