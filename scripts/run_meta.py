@@ -16,7 +16,7 @@ import utils
 INPUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'input')
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'output')
 # set minimum number of experiments to run meta-analysis / subsampling
-MIN_EXPERIMENTS = 15
+MIN_EXPERIMENTS = 17
 MIN_EXPERIMENTS_SUBSAMPLING = 60
 # define dilated cerebellar mask (created via utils.create_Driedrischen2009_mask('MNI', dilation=6))
 MASK_NAME = 'D2009_MNI_dilated-6mm'
@@ -59,6 +59,8 @@ def prepare_data(bd_prefix, pure=False, merge_exps=True, out_path=None):
     else:
         # load the masked dump if it already exists
         dump = nimare.dataset.Dataset.load(dump_path)
+    # filter to activations
+    dump = dump.slice(dump.metadata.loc[dump.metadata['type']=='Activations', 'id'].values)
     # get the full list of BDs within the dump that
     # start with bd_prefix
     # e.g. 'Cognition' -> ['Cognition', 'Cognition.Language', ...]
@@ -73,6 +75,9 @@ def prepare_data(bd_prefix, pure=False, merge_exps=True, out_path=None):
     else:
         exp_mask = dump.metadata['behavioral_domain'].map(lambda c: len(set(c).intersection(selected_bds))>0)
     selected_ids = dump.metadata.loc[exp_mask, 'id'].values
+    if len(selected_ids) == 0:
+        print(f"No experiments found for {bd_prefix}")
+        return None
     dset = dump.slice(selected_ids)
     # merge multiple contrasts (experiments) within the same study if indicated
     if merge_exps:
@@ -169,7 +174,8 @@ def run_ale(dset, mask, out_dir=None, n_iters=10000, use_gpu=True, n_cores=4):
 def run_sale(dset, mask, out_dir=None, n_iters=10000, use_gpu=True, 
              n_cores=4, height_thr=0.001, k=50, sigma_scale=1.0, 
              debug=False, use_mmap=False, approach='probabilistic',
-             source='BrainMap'):
+             cres_mask=nibabel.load(os.path.join(INPUT_DIR, 'maps', f'{MASK_NAME_PROPER}.nii.gz')),
+             cres_mask_name=MASK_NAME_PROPER, source='BrainMap'):
     """
     Runs specific ALE (SALE) on the given dataset and saves its results.
     Note that probabilistic SALE is not implemented for CPU.
@@ -202,6 +208,11 @@ def run_sale(dset, mask, out_dir=None, n_iters=10000, use_gpu=True,
         Approach to use for sampling null coordinates
         - probabilistic: uses a null probability map
         - deterministic: uses a null set of coordinates
+    cres_mask: nibabel.Nifti1Image or None
+        Mask to use for cluster-extent correction
+        if None, the results are not further masked
+        (i.e., `mask` is used)
+    cres_mask_name : str or None
     source : {'BrainMap', 'Neurosynth'}
     """
     print(f"Running {approach} SALE on ({len(dset.ids)} experiments)...")
@@ -253,24 +264,27 @@ def run_sale(dset, mask, out_dir=None, n_iters=10000, use_gpu=True,
         # save uncorrected results
         print("Saving results...")
         results.save_maps(out_dir, 'uncorr')
-        # run cluster-extent correction after masking
-        # the results to the cerebellar proper mask (not dilated)
-        proper_mask_img = nibabel.load(os.path.join(INPUT_DIR, 'maps', f'{MASK_NAME_PROPER}.nii.gz'))
-        # mask z and logp to the proper mask
-        z_orig = results.get_map('z')
-        logp_orig = results.get_map('logp')
-        z_masked = nilearn.image.math_img("m * img", img=z_orig, m=proper_mask_img)
-        logp_masked = nilearn.image.math_img("m * img", img=logp_orig, m=proper_mask_img)
+        # run cluster-extent correction (after masking to cres_mask)
+        z = results.get_map('z')
+        logp = results.get_map('logp')
+        if cres_mask is not None:
+            # mask z and logp to the proper mask
+            z = nilearn.image.math_img("m * img", img=z, m=cres_mask)
+            logp = nilearn.image.math_img("m * img", img=logp, m=cres_mask)        
         # cluster extent correction on masked results
-        cres = utils.cluster_extent_correction({'z': z_masked, 'logp': logp_masked}, k=k, height_thr=height_thr)
+        cres = utils.cluster_extent_correction({'z': z, 'logp': logp}, k=k, height_thr=height_thr)
         # save corrected results
         for map_name, img in cres.items():
-            img.to_filename(os.path.join(out_dir, f'corr_cluster_h-{str(height_thr)[2:]}_k-{k}_mask-{MASK_NAME_PROPER}_{map_name}.nii.gz'))
+            if cres_mask_name is None:
+                fname = f'corr_cluster_h-{str(height_thr)[2:]}_k-{k}_{map_name}.nii.gz'
+            else:
+                fname = f'corr_cluster_h-{str(height_thr)[2:]}_k-{k}_mask-{cres_mask_name}_{map_name}.nii.gz'
+            img.to_filename(os.path.join(out_dir, fname))
 
 def run_meta(analysis, source, subbd='', 
              n_iters=10000, use_gpu=True, n_cores=4, 
              subsample_size=0, subsample_idx=None, 
-             n_subsamples=0):
+             n_subsamples=0, overwrite=False):
     """
     Main function that runs main and subsampled ALE/SALE after
     preparing their datasets and saves the results to the output
@@ -299,6 +313,8 @@ def run_meta(analysis, source, subbd='',
         subsamples
     n_subsamples : int
         Number of subsamples to run. Only used if `subsample_size` is not None
+    overwrite : bool
+        Overwrite existing results
     """
     if source == 'Neurosynth':
         # this is only going to be run once
@@ -328,6 +344,9 @@ def run_meta(analysis, source, subbd='',
             dset = prepare_data(subbd, out_path=dset_path)
         elif source == 'Neurosynth':
             dset = prepare_data_neurosynth(subbd, out_path=dset_path)
+        if dset is None:
+            print(f"No experiments found for {subbd}")
+            return
     # skip meta-analysis if there are not enough experiments
     if len(dset.ids) < MIN_EXPERIMENTS:
         print(f"Skipping {bd} {subbd} due to insufficient number of experiments")
@@ -350,6 +369,8 @@ def run_meta(analysis, source, subbd='',
     # load mask
     mask_img = nibabel.load(os.path.join(INPUT_DIR, 'maps', f'{MASK_NAME}.nii.gz'))
     mask = nilearn.maskers.NiftiMasker(mask_img)
+    # load proper mask for cluster-extent correction
+    cres_mask_img = nibabel.load(os.path.join(INPUT_DIR, 'maps', f'{MASK_NAME_PROPER}.nii.gz'))
     # subsample if indicated
     if subsample_size > 0:
         # run subsamples
@@ -359,9 +380,9 @@ def run_meta(analysis, source, subbd='',
             # number of subsamples and recursively calls this function
             # for each subsample index, then exits (returns)
             for i in range(n_subsamples):
-                run_meta(analysis=analysis, bd=bd, subbd=subbd, n_iters=n_iters, 
+                run_meta(analysis=analysis, source=source, subbd=subbd, n_iters=n_iters, 
                     use_gpu=use_gpu, n_cores=n_cores, subsample_size=subsample_size, 
-                    subsample_idx=i)
+                    subsample_idx=i, overwrite=overwrite)
             return
         else:
             # i.e., this is not the parent run, and we should now run
@@ -379,6 +400,10 @@ def run_meta(analysis, source, subbd='',
             subsample = np.random.choice(dset.ids, subsample_size, replace=False)
             dset = dset.slice(subsample)
             dset.save(os.path.join(out_dir, 'dset.pkl.gz'))
+    # skip running if already done
+    if os.path.exists(os.path.join(out_dir, 'stats.json')) and not overwrite:
+        print(f"Skipping {bd} {subbd} {analysis} ({source}) - already done")
+        return
     print(f"subsample {subsample_idx}" if (subsample_idx is not None) else "full sample")
     # fix the seed used for generating SALE/ALE nulls
     np.random.seed(0)
@@ -386,9 +411,16 @@ def run_meta(analysis, source, subbd='',
     if analysis == 'ALE':
         run_ale(dset, mask, out_dir, n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores)
     elif analysis == 'SALE':
-        run_sale(dset, mask, out_dir, n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores, source=source)
+        run_sale(
+            dset, mask, out_dir, n_iters=n_iters, 
+            use_gpu=use_gpu, n_cores=n_cores, source=source,
+            cres_mask=cres_mask_img, cres_mask_name=MASK_NAME_PROPER,
+        )
     elif analysis == 'dSALE':
-        run_sale(dset, mask, out_dir, n_iters=n_iters, use_gpu=use_gpu, n_cores=n_cores, source=source, approach='deterministic')
+        run_sale(dset, mask, out_dir, n_iters=n_iters, 
+        use_gpu=use_gpu, n_cores=n_cores, source=source,
+        cres_mask=cres_mask_img, cres_mask_name=MASK_NAME_PROPER,
+        approach='deterministic')
     # save config after running the analysis
     with open(os.path.join(out_dir, 'config.json'), 'w') as f:
         json.dump({
@@ -411,7 +443,7 @@ def run_meta(analysis, source, subbd='',
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('analysis', type=str, help='analysis to run', 
-        choices=['ALE', 'SALE', 'dSALE', 'macm', 'variogram'])
+        choices=['ALE', 'SALE', 'dSALE'])
     parser.add_argument('source', type=str, help='data source',
         choices=['BrainMap', 'Neurosynth']
     )
@@ -425,9 +457,12 @@ if __name__ == '__main__':
                         help='number of null permutations')
     parser.add_argument('-use_gpu', type=int, help='use gpu', default=True)
     parser.add_argument('-n_cores', type=int, help='number of CPU cores', default=4)
+    parser.add_argument('-overwrite', action='store_true')
 
     args = parser.parse_args()
 
     run_meta(analysis=args.analysis, source=args.source, subbd=args.subbd, 
         n_iters=args.n_iters, use_gpu=args.use_gpu, n_cores=args.n_cores, 
-        subsample_size=args.subsample_size, n_subsamples=args.n_subsamples)
+        subsample_size=args.subsample_size, n_subsamples=args.n_subsamples,
+        overwrite=args.overwrite
+        )

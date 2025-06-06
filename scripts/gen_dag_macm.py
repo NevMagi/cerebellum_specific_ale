@@ -22,6 +22,9 @@ def generate_dagman_file():
     zmap_paths = glob.glob(os.path.join(OUTPUT_DIR, 'SALE', '*', '*', 'corr_cluster_h-001_k-50_mask-D2009_MNI_z.nii.gz'))
     job_count = 0
     for zmap_path in zmap_paths:
+        if 'Neurosynth' in zmap_path:
+            # skip Neurosynth z-maps
+            continue
         zmap = nibabel.load(zmap_path)
         # only run MACM if there are significant clusters
         sig = np.any(zmap.get_fdata().flatten()>0)

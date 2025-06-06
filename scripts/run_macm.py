@@ -5,7 +5,7 @@ import nibabel
 import argparse
 import json
 
-from run import run_sale
+from run_meta import run_sale
 import utils
 
 # define input and output directories
@@ -16,7 +16,7 @@ MIN_EXPERIMENTS = 15
 # define brain GM mask
 MASK_NAME = 'Grey10'
 # define kernel sum map used for sampling null coordinates in pSALE
-PROB_MAP_PATH = utils.get_kernels_sum(os.path.join(OUTPUT_DIR, 'BrainMap_dump_Feb2024.pkl.gz'))
+PROB_MAP_PATH = utils.get_kernels_sum(os.path.join(OUTPUT_DIR, 'data', 'BrainMap_dump_Feb2024.pkl.gz'))
 
 def run_macm(zmap_path, n_iters=10000, use_gpu=True, n_cores=4, merge_exps=True):
     """
@@ -52,6 +52,8 @@ def run_macm(zmap_path, n_iters=10000, use_gpu=True, n_cores=4, merge_exps=True)
     else:
         # load the masked dump if it already exists
         dump = nimare.dataset.Dataset.load(dump_path)
+    # filter to activations
+    dump = dump.slice(dump.metadata.loc[dump.metadata['type']=='Activations', 'id'].values)
     # filter dump to experiments including a focus in the mask
     seed_dset = dump.slice(dump.get_studies_by_mask(seed))
     if merge_exps:
@@ -62,6 +64,9 @@ def run_macm(zmap_path, n_iters=10000, use_gpu=True, n_cores=4, merge_exps=True)
         return
     # set output path
     out_dir = zmap_path.replace('.nii.gz', '_macm')
+    if os.path.exists(os.path.join(out_dir, 'stats.json')):
+        print(f"MACM of {zmap_path} is already done")
+        return
     os.makedirs(out_dir, exist_ok=True)
     # save dset
     seed_dset.save(os.path.join(out_dir, 'dset.pkl.gz'))
@@ -79,7 +84,7 @@ def run_macm(zmap_path, n_iters=10000, use_gpu=True, n_cores=4, merge_exps=True)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-zmap_path', type=str, required=True, help='full path to thresholded z-map as seed of macm')
+    parser.add_argument('zmap_path', type=str, help='full path to thresholded z-map as seed of macm')
     parser.add_argument('-n_iters', type=int, default=10000, help='number of null permutations')
 
     args = parser.parse_args()

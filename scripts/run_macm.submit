@@ -9,7 +9,7 @@ initial_dir    = $ENV(PROJECT_DIR)
 executable     = $(initial_dir)/venv/bin/python
 
 # Job
-arguments = $(initial_dir)/scripts/run_macm.py --macm_in $(zmap_path)
+arguments = $(initial_dir)/scripts/run_macm.py $(zmap_path)
 log       = $(initial_dir)/logs/run_macm.$(Cluster).$(Process).log
 output    = $(initial_dir)/logs/run_macm.$(Cluster).$(Process).out
 error     = $(initial_dir)/logs/run_macm.$(Cluster).$(Process).err

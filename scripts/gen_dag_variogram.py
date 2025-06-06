@@ -20,6 +20,9 @@ def generate_dagman_file():
     # list all SALE unthresholded z-maps
     zmap_paths = glob.glob(os.path.join(OUTPUT_DIR, 'SALE', '*', '*', 'uncorr_z.nii.gz'))
     for i, zmap_path in enumerate(zmap_paths):
+        if 'Neurosynth' in zmap_path:
+            # skip Neurosynth z-maps
+            continue
         f.write(f'JOB job_{i} {submit_file}\n')
         f.write(f'VARS job_{i} zmap_path="{zmap_path}"\n\n')
     maxjobs = 50 # number of ongoing jobs at a time

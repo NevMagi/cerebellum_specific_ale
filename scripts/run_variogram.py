@@ -62,7 +62,7 @@ def run_variogram(z_path, perms=1000):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-zmap_path', type=str, required=True, help='full path to unthresholded z-map')
+    parser.add_argument('zmap_path', type=str, help='full path to unthresholded z-map')
     parser.add_argument('-perms', type=int, default=1000, help='number of surrogates to generate')
     args = parser.parse_args()
 

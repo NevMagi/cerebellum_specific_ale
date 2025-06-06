@@ -14,4 +14,8 @@ subsamples_*/
 *.json
 figures-old/
 scripts/Figures/backup/
+scripts/_Figures
 output/Figures/*
+output/figures/*
+output/backup/
+output_w_deactivations/

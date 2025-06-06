@@ -8,7 +8,7 @@ seaborn
 scikit-learn
 nimare==0.2.0
 cupy-cuda11x
-git+https://github.com/amnsbr/nimare-gpu.git@1478172a1f0bf90334004b2ea6254949f75987e5
+git+https://github.com/amnsbr/nimare-gpu.git@30af24cfb82de9e15a6e30a876db61b6ab767a22
 SUITPy==1.3.2
 nibabel==5.2.0
 nilearn==0.10.2

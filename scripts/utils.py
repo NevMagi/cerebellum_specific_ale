@@ -722,11 +722,9 @@ def plot_subsample_correlations(
         else:  # data_type == 'domain'
             fig_filename = f'{prefix}Domain_SpatialCorrelations_{subsample}.png'
         # Construct the full path and save the figure
-        fig_path = os.path.join(save_dir, fig_filename)
-        fig.savefig(fig_path, bbox_inches='tight')
-        # Display the plot
-        plt.show()
-        plt.close(fig)
+        if save_dir is not None:
+            fig_path = os.path.join(save_dir, fig_filename)
+            fig.savefig(fig_path, bbox_inches='tight')
 
 def plot_common_flatmap(
     percent_maps, analysis, granularity, subsampling, 
